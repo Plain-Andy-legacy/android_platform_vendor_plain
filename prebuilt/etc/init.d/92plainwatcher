@@ -1,88 +1,47 @@
 #!/system/bin/sh
-setprop stocktcpcong $(cat /proc/sys/net/ipv4/tcp_congestion_control)
-setprop stockscheduler $(cat /sys/block/mmcblk0/queue/scheduler | sed 's/.*[[]//g' | sed 's/[]].*//g')
-setprop stockgov $(ls /sys/devices/system/cpu/cpufreq)
-setprop stockminkhz $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq)
-setprop stockmaxkhz $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
 cmd='sh /system/etc/init.plain.kerneltweak.sh'
 sha=0
-sdcustomdensity=$(grep "customdensity=" /sdcard/customdensity  | sed 's/customdensity*.//')
-customdensity=$(grep "customdensity=" /vendor/build.prop  | sed 's/customdensity*.//')
-maindensity(){
-if [ $customdensity != $(getprop ro.sf.lcd_density) ]
-	then
-	comparedensity
-	if [ $(getprop comparedensity) -gt 0 ]
-	then
-	enabledensity
-	fi
+sdcustomdensity=$(cat $EXTERNAL_STORAGE/customdensity | sed 's/customdensity*.//')
+if [ -n $sdcustomdensity ]; then
+setprop persist.sys.customdensity $sdcustomdensity
+else
+echo "customdensity="$(getprop ro.sf.lcd_density) > $EXTERNAL_STORAGE/customdensity
 fi
-}
-sourceconfigdensity(){
-	if [ -z $customdensity ]
-	then
-	. /sdcard/customdensity
-	cat /sdcard/customdensity >> /vendor/build.prop
-	else
-	propcomparedensity	
-	fi
-	}
-enabledensity(){
-	setprop customdensity $customdensity
-	setprop qemu.sf.lcd_density $customdensity
-	}
-disabledensity(){
-	setprop customdensity $(getprop ro.sf.lcd_density)
-	sed -i '/customdensity=/d' /vendor/build.prop
-	}
-comparedensity(){
-	if [ $customdensity -gt $(getprop ro.sf.lcd_density) ]
-	then
-		compare=$(expr $customdensity - $(getprop ro.sf.lcd_density) )
-	else
-		compare=$(expr $(getprop ro.sf.lcd_density) - $customdensity )
-	fi
-		echo "Comparison is "$compare
-		setprop comparedensity $compare
-	if [ 180 -gt $customdensity ]
-	then
-		echo "Aborting; Custom density is less than 180"
-		exit
-	fi
-	if [ $(getprop comparedensity) -gt 180 ]
-	then
-		echo "Aborting; Density comparison is more than 180"
-		exit
-	fi
-	}
-propcomparedensity(){
-	if [ -z $sdcustomdensity ]
-	then
-	sed -i '/customdensity=/d' /vendor/build.prop
-	disabledensity
-	echo 'customdensity='$(getprop customdensity)  > /sdcard/customdensity
-	. /sdcard/customdensity
-	sdcustomdensity=$(grep "customdensity=" /sdcard/customdensity  | sed 's/customdensity*.//')
-	fi
-	if [ $customdensity != $sdcustomdensity ]
-	then
-	sed -i '/customdensity=/d' /vendor/build.prop
-	echo 'customdensity='$sdcustomdensity >> /vendor/build.prop
-	fi
-	}
-maindensity
-if [ -z $(getprop updateinterval) ]
+if [ -z $(getprop persist.sys.updateinterval) ]
 then
-setprop updateinterval 10
+setprop persist.sys.updateinterval 10
 fi
-while [ -z $(getprop enable_plaintweak) ]
+while [ -z $(getprop persist.sys.enable_plaintweak) ]
 do
-  sleep $(getprop updateinterval)
+  if [ ! -f /data/property/persist.sys.enable_plaintweak ]; then
+    setprop persist.sys.enable_plaintweak 1
+  fi
+  sleep $(getprop persist.sys.updateinterval)
 done # waiting for boot complete
+while [ -z $(getprop persist.sys.stocktcpcong) ]
+do
+setprop persist.sys.stocktcpcong $(cat /proc/sys/net/ipv4/tcp_congestion_control)
+done
+while [ -z $(getprop persist.sys.stockscheduler) ]
+do
+setprop persist.sys.stockscheduler $(cat /sys/block/mmcblk0/queue/scheduler | sed 's/.*[[]//g' | sed 's/[]].*//g')
+done
+while [ -z $(getprop persist.sys.stockgov) ]
+do
+setprop persist.sys.stockgov $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)
+done
+while [ -z $(getprop persist.sys.stockminkhz) ]
+do
+setprop persist.sys.stockminkhz $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq)
+done
+while [ -z $(getprop persist.sys.stockmaxkhz) ]
+do
+setprop persist.sys.stockmaxkhz $(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
+done
 $cmd
 echo "Plain-tweak watcher is online"
 #Using original watch scripting from https://gist.github.com/mikesmullin/6401258
-path=/sdcard/plaintweak
+path=$EXTERNAL_STORAGE/plaintweak
 update_sha() {
   sha=`sha1sum $path`
 }
@@ -95,55 +54,55 @@ build() {
 coreset2(){
 if [ -d /sys/devices/system/cpu/cpu1/cpufreq ]
 then
-	echo $(getprop maxkhz) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq
-	echo $(getprop minkhz) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_min_freq
-	echo $(getprop gov) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
+	echo $(getprop persist.sys.maxkhz) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_max_freq
+	echo $(getprop persist.sys.minkhz) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_min_freq
+	echo $(getprop persist.sys.gov) > /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
 fi
 
 if [ -d /sys/devices/system/cpu/cpu2/cpufreq ]
 then
-	if [ -z $(getprop maxkhz2) ]
+	if [ -z $(getprop persist.sys.maxkhz2) ]
 	then
-		echo $(getprop maxkhz) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq
+		echo $(getprop persist.sys.maxkhz) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq
 	else
-		echo $(getprop maxkhz2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq
+		echo $(getprop persist.sys.maxkhz2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_max_freq
 	fi
-	if [ -z $(getprop minkhz2) ]
+	if [ -z $(getprop persist.sys.minkhz2) ]
 	then
-		echo $(getprop minkhz) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_min_freq
+		echo $(getprop persist.sys.minkhz) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_min_freq
 	else
-		echo $(getprop minkhz2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_min_freq
+		echo $(getprop persist.sys.minkhz2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_min_freq
 	fi
-	if [ -z $(getprop gov2) ]
+	if [ -z $(getprop persist.sys.gov2) ]
 	then
-		echo $(getprop gov) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+		echo $(getprop persist.sys.gov) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
 	else
-		echo $(getprop gov2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+		echo $(getprop persist.sys.gov2) > /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
 	fi
 fi
 
 if [ -d /sys/devices/system/cpu/cpu3/cpufreq ]
 then
-	if [ -z $(getprop maxkhz2) ]
+	if [ -z $(getprop persist.sys.maxkhz2) ]
 	then
-		echo $(getprop maxkhz) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq
+		echo $(getprop persist.sys.maxkhz) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq
 	else
-		echo $(getprop maxkhz2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq
+		echo $(getprop persist.sys.maxkhz2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_max_freq
 	fi
 
-	if [ -z $(getprop minkhz2) ]
+	if [ -z $(getprop persist.sys.minkhz2) ]
 	then
-		echo $(getprop minkhz) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_min_freq
+		echo $(getprop persist.sys.minkhz) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_min_freq
 	else
-		echo $(getprop minkhz2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_min_freq
+		echo $(getprop persist.sys.minkhz2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_min_freq
 	fi
-	if [ -z $(getprop gov2) ]
+	if [ -z $(getprop persist.sys.gov2) ]
 	then
-		echo $(getprop gov) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+		echo $(getprop persist.sys.gov) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
 	else
-		echo $(getprop gov2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+		echo $(getprop persist.sys.gov2) > /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
 	fi
-fi	
+fi
 }
 compare() {
   update_sha
@@ -157,15 +116,11 @@ trap build SIGINT
 trap exit SIGQUIT
 while true; do
 sysrw
-if [ $(getprop enable_plaintweak) != "0" ]; then
+if [ $(getprop persist.sys.enable_plaintweak) == "1" ]; then
   compare
-  sourceconfigdensity
   else
   build
-  disabledensity
 fi
-  sleep $(getprop updateinterval)
-  sed -i '/enable_plaintweak/d' /vendor/build.prop
-  echo 'enable_plaintweak='$(getprop enable_plaintweak) >> /vendor/build.prop
+  sleep $(getprop persist.sys.updateinterval)
 sysro
 done
